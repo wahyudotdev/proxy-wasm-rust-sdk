@@ -12,10 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::dispatcher;
-use crate::types::*;
 use std::ptr::{null, null_mut};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
+
+use log::info;
+
+use crate::dispatcher;
+use crate::types::*;
 
 extern "C" {
     fn proxy_log(level: LogLevel, message_data: *const u8, message_size: usize) -> Status;
@@ -129,9 +132,12 @@ pub fn set_buffer(
     size: usize,
     value: &[u8],
 ) -> Result<(), Status> {
+    info!("set buffer");
     unsafe {
         match proxy_set_buffer_bytes(buffer_type, start, size, value.as_ptr(), value.len()) {
             Status::Ok => Ok(()),
+            Status::BadArgument => Ok(()),
+            Status::NotFound => Ok(()),
             status => panic!("unexpected status: {}", status as u32),
         }
     }
@@ -238,7 +244,7 @@ pub fn get_map_value(map_type: MapType, key: &str) -> Result<Option<String>, Sta
                             return_size,
                             return_size,
                         ))
-                        .unwrap(),
+                            .unwrap(),
                     ))
                 } else {
                     Ok(None)
@@ -663,6 +669,7 @@ pub fn close_downstream() -> Result<(), Status> {
         }
     }
 }
+
 pub fn close_upstream() -> Result<(), Status> {
     unsafe {
         match proxy_close_stream(StreamType::Upstream) {
@@ -964,7 +971,7 @@ pub fn get_grpc_status() -> Result<(u32, Option<String>), Status> {
                                 return_size,
                                 return_size,
                             ))
-                            .unwrap(),
+                                .unwrap(),
                         ),
                     ))
                 } else {
@@ -1111,8 +1118,9 @@ pub fn increment_metric(metric_id: u32, offset: i64) -> Result<(), Status> {
 }
 
 mod utils {
-    use crate::types::Bytes;
     use std::convert::TryFrom;
+
+    use crate::types::Bytes;
 
     pub(super) fn serialize_property_path(path: Vec<&str>) -> Bytes {
         if path.is_empty() {
