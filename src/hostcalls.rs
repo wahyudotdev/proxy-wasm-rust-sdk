@@ -728,6 +728,8 @@ pub fn send_http_response(
             -1,
         ) {
             Status::Ok => Ok(()),
+            Status::NotFound => Ok(()),
+            Status::BadArgument => Ok(()),
             status => panic!("unexpected status: {}", status as u32),
         }
     }
