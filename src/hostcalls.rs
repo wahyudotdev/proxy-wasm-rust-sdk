@@ -132,12 +132,9 @@ pub fn set_buffer(
     size: usize,
     value: &[u8],
 ) -> Result<(), Status> {
-    info!("set buffer");
     unsafe {
         match proxy_set_buffer_bytes(buffer_type, start, size, value.as_ptr(), value.len()) {
             Status::Ok => Ok(()),
-            Status::BadArgument => Ok(()),
-            Status::NotFound => Ok(()),
             status => panic!("unexpected status: {}", status as u32),
         }
     }
@@ -717,7 +714,7 @@ pub fn send_http_response(
 ) -> Result<(), Status> {
     let serialized_headers = utils::serialize_map(headers);
     unsafe {
-        match proxy_send_local_response(
+         proxy_send_local_response(
             status_code,
             null(),
             0,
@@ -726,12 +723,8 @@ pub fn send_http_response(
             serialized_headers.as_ptr(),
             serialized_headers.len(),
             -1,
-        ) {
-            Status::Ok => Ok(()),
-            Status::NotFound => Ok(()),
-            Status::BadArgument => Ok(()),
-            status => panic!("unexpected status: {}", status as u32),
-        }
+        );
+        Ok(())
     }
 }
 
