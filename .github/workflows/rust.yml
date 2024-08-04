@@ -18,11 +18,11 @@ on:
 
   pull_request:
     branches:
-    - master
+    - main
 
   push:
     branches:
-    - master
+    - main
 
   schedule:
     - cron: '0 0 * * *'
@@ -53,6 +53,11 @@ jobs:
       with:
         go-version: '^1.16'
 
+    - name: Install dependencies
+      if: ${{ env.ACT }}
+      run: |
+        go install github.com/bazelbuild/bazelisk@v1.19.0
+
     - name: Cache
       uses: actions/cache@v2
       with:
@@ -66,10 +71,10 @@ jobs:
         key: ${{ hashFiles('WORKSPACE', '.bazelrc', '.bazelversion', 'bazel/cargo/Cargo.Bazel.lock', 'bazel/dependencies.bzl', 'bazel/repositories.bzl') }}
 
     - name: Build (wasm32-unknown-unknown)
-      run: bazelisk --noworkspace_rc build --platforms=@rules_rust//rust/platform:wasm //...
+      run: bazelisk --noworkspace_rc build --noenable_bzlmod --platforms=@rules_rust//rust/platform:wasm //...
 
     - name: Build (wasm32-wasi)
-      run: bazelisk --noworkspace_rc build --platforms=@rules_rust//rust/platform:wasi //...
+      run: bazelisk --noworkspace_rc build --noenable_bzlmod --platforms=@rules_rust//rust/platform:wasi //...
 
     - name: Format (buildifier)
       run: |
@@ -80,8 +85,57 @@ jobs:
 
     - name: Format (rules_rust)
       run: |
-        bazelisk --noworkspace_rc run //bazel/cargo:crates_vendor
+        bazelisk --noworkspace_rc run --noenable_bzlmod //bazel/cargo:crates_vendor
         git diff --exit-code
+
+  msrv:
+    runs-on: ubuntu-latest
+
+    env:
+      RUSTFLAGS: -D warnings
+
+    steps:
+    - uses: actions/checkout@v2
+
+    - name: Install dependencies
+      if: ${{ env.ACT }}
+      run: |
+        curl -OL https://static.rust-lang.org/rustup/rustup-init.sh
+        chmod +x ./rustup-init.sh
+        ./rustup-init.sh -y --default-toolchain 1.64.0
+        rm rustup-init.sh
+        echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+
+    - name: Update Rust
+      run: |
+        rustup toolchain install 1.64.0 --component clippy --component rustfmt
+        rustup default 1.64.0
+        rustup target add wasm32-unknown-unknown
+        rustup target add wasm32-wasi
+
+    - name: Build (wasm32-unknown-unknown)
+      run: cargo build --release --all-targets --target=wasm32-unknown-unknown
+
+    - name: Clippy (wasm32-unknown-unknown)
+      run: cargo clippy --release --all-targets --target=wasm32-unknown-unknown
+
+    - name: Build (wasm32-wasi)
+      run: cargo build --release --all-targets --target=wasm32-wasi
+
+    - name: Clippy (wasm32-wasi)
+      run: cargo clippy --release --all-targets --target=wasm32-wasi
+
+    - name: Format (rustfmt)
+      run: cargo fmt -- --check
+
+    - name: Format (manifest)
+      run: cargo verify-project
+
+    - name: Package (docs)
+      run: cargo doc --no-deps --target=wasm32-unknown-unknown
+
+    - name: Package (publish)
+      run: cargo publish --dry-run --target=wasm32-unknown-unknown
 
   stable:
     runs-on: ubuntu-latest
@@ -91,6 +145,15 @@ jobs:
 
     steps:
     - uses: actions/checkout@v2
+
+    - name: Install dependencies
+      if: ${{ env.ACT }}
+      run: |
+        curl -OL https://static.rust-lang.org/rustup/rustup-init.sh
+        chmod +x ./rustup-init.sh
+        ./rustup-init.sh -y --default-toolchain stable
+        rm rustup-init.sh
+        echo "$HOME/.cargo/bin" >> $GITHUB_PATH
 
     - name: Update Rust
       run: |
@@ -131,12 +194,21 @@ jobs:
     steps:
     - uses: actions/checkout@v2
 
+    - name: Install dependencies
+      if: ${{ env.ACT }}
+      run: |
+        curl -OL https://static.rust-lang.org/rustup/rustup-init.sh
+        chmod +x ./rustup-init.sh
+        ./rustup-init.sh -y --default-toolchain nightly
+        rm rustup-init.sh
+        echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+
     - name: Update Rust
       run: |
         rustup toolchain install nightly --component clippy --component rustfmt
-        rustup +nightly target add wasm32-unknown-unknown
-        rustup +nightly target add wasm32-wasi
         rustup default nightly
+        rustup target add wasm32-unknown-unknown
+        rustup target add wasm32-wasi
 
     - name: Build (wasm32-unknown-unknown)
       run: cargo build --release --all-targets --target=wasm32-unknown-unknown
@@ -168,6 +240,17 @@ jobs:
     steps:
     - uses: actions/checkout@v2
 
+    - name: Install dependencies
+      if: ${{ env.ACT }}
+      run: |
+        curl -OL https://static.rust-lang.org/rustup/rustup-init.sh
+        chmod +x ./rustup-init.sh
+        ./rustup-init.sh -y
+        rm rustup-init.sh
+        echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+        export PATH=$PATH:$HOME/.cargo/bin
+        cargo install cargo-outdated
+
     - name: Run cargo outdated
       run: cargo outdated --root-deps-only --exit-code 1
 
@@ -176,6 +259,17 @@ jobs:
 
     steps:
     - uses: actions/checkout@v2
+
+    - name: Install dependencies
+      if: ${{ env.ACT }}
+      run: |
+        curl -OL https://static.rust-lang.org/rustup/rustup-init.sh
+        chmod +x ./rustup-init.sh
+        ./rustup-init.sh -y
+        rm rustup-init.sh
+        echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+        export PATH=$PATH:$HOME/.cargo/bin
+        cargo install cargo-audit
 
     - name: Run cargo audit
       run: |
@@ -193,6 +287,7 @@ jobs:
         - 'http_body'
         - 'http_config'
         - 'http_headers'
+        - 'grpc_auth_random'
 
     defaults:
       run:
@@ -203,6 +298,15 @@ jobs:
 
     steps:
     - uses: actions/checkout@v2
+
+    - name: Install dependencies
+      if: ${{ env.ACT }}
+      run: |
+        curl -OL https://static.rust-lang.org/rustup/rustup-init.sh
+        chmod +x ./rustup-init.sh
+        ./rustup-init.sh -y
+        rm rustup-init.sh
+        echo "$HOME/.cargo/bin" >> $GITHUB_PATH
 
     - name: Update Rust
       run: |
@@ -232,7 +336,7 @@ jobs:
         docker run --rm \
           -v $(pwd)/envoy.yaml:/envoy.yaml \
           -v $(pwd)/target/wasm32-wasi/release:/etc/envoy/proxy-wasm-plugins \
-          envoyproxy/envoy:v1.24-latest \
+          envoyproxy/envoy:v1.31-latest \
           --mode validate \
           -c envoy.yaml
 
@@ -247,6 +351,7 @@ jobs:
         - 'http_body'
         - 'http_config'
         - 'http_headers'
+        - 'grpc_auth_random'
 
     defaults:
       run:
@@ -257,6 +362,15 @@ jobs:
 
     steps:
     - uses: actions/checkout@v2
+
+    - name: Install dependencies
+      if: ${{ env.ACT }}
+      run: |
+        curl -OL https://static.rust-lang.org/rustup/rustup-init.sh
+        chmod +x ./rustup-init.sh
+        ./rustup-init.sh -y
+        rm rustup-init.sh
+        echo "$HOME/.cargo/bin" >> $GITHUB_PATH
 
     - name: Update Rust
       run: |
@@ -300,6 +414,6 @@ jobs:
         docker run --rm \
           -v $(pwd)/envoy.yaml:/envoy.yaml \
           -v $(pwd)/target/wasm32-wasi/release:/etc/envoy/proxy-wasm-plugins \
-          envoyproxy/envoy:v1.24-latest \
+          envoyproxy/envoy:v1.31-latest \
           --mode validate \
           -c envoy.yaml
